@@ -3,41 +3,39 @@ API/HTTPPOST adapter layer to snipe-it asset management project to allow semi-au
 
 Intended to be used on AWS Lambda, hence not using libraries like BeautifulSoup, etc
 
-Here are some sample calls that actually work:
-#write out to the asset/monitoring system (variables are defined elsewhere)
+#Here are some sample calls that actually work:
+	#write out to the asset/monitoring system (variables are defined elsewhere)
+	
+	from SnipeAPIAdapter import SnipeAPIAdapter
+	import json
+	import datetime
+	from dateutil import parser
+	import pytz
+	import urllib
 
-#!/usr/bin/python
+	snipe = SnipeAPIAdapter(endpoint, username, password)
 
-from SnipeAPIAdapter import SnipeAPIAdapter
-import json
-import datetime
-from dateutil import parser
-import pytz
-import urllib
+	asset_id = snipe.getAssetId(tag=asset_set['category']+"/"+asset_set['serial'])
+	if asset_id is not False:
+		#does the asset have accurate information?
+        	data_asset_edit = snipe.getAssetData(id=asset_id)
+        	data_asset_username = snipe.getAssetUsername(tag=asset_set['category']+"/"+asset_set['serial'])
 
-snipe = SnipeAPIAdapter(endpoint, username, password)
-
-asset_id = snipe.getAssetId(tag=asset_set['category']+"/"+asset_set['serial'])
-if asset_id is not False:
-        #does the asset have accurate information?
-        data_asset_edit = snipe.getAssetData(id=asset_id)
-        data_asset_username = snipe.getAssetUsername(tag=asset_set['category']+"/"+asset_set['serial'])
-
-else:
-        #add a new asset based on our information
-        #defaults
-        monitorable_custom_fields = ["Monitoring"]
-        fieldset_id = snipe.getCustomFieldSets(name="Monitorable", custom_fields=monitorable_custom_fields)
-        status_ids = snipe.getStatusId()
-        deployable_status_id = status_ids['Ready to Deploy']
-        #specifics
-        company_id = snipe.getCompanyId(company)
-        model_id = snipe.getAssetModelId(asset_model_name=asset_set['model'], manufacturer=asset_set['manufacturer'], category=asset_set['category'], custom_fieldset_id=fieldset_id)
-        user_id = snipe.getUserId(username=str(asset_set['vehicle_id']), group=depot)
-        asset_id = snipe.getAssetId(tag=asset_set['category']+"/"+asset_set['serial'], serial=asset_set['serial'], model_id=model_id, company_id=company_id, status_id=deployable_status_id)
-        snipe.checkout(asset_id=asset_id, user_id=user_id)
-
-snipe.cleanup()
+	else:
+        	#add a new asset based on our information
+        	#defaults
+        	monitorable_custom_fields = ["Monitoring"]
+        	fieldset_id = snipe.getCustomFieldSets(name="Monitorable", custom_fields=monitorable_custom_fields)
+        	status_ids = snipe.getStatusId()
+        	deployable_status_id = status_ids['Ready to Deploy']
+        	#specifics
+        	company_id = snipe.getCompanyId(company)
+        	model_id = snipe.getAssetModelId(asset_model_name=asset_set['model'], manufacturer=asset_set['manufacturer'], category=asset_set['category'], custom_fieldset_id=fieldset_id)
+        	user_id = snipe.getUserId(username=str(asset_set['vehicle_id']), group=depot)
+        	asset_id = snipe.getAssetId(tag=asset_set['category']+"/"+asset_set['serial'], serial=asset_set['serial'], model_id=model_id, company_id=company_id, status_id=deployable_status_id)
+        	snipe.checkout(asset_id=asset_id, user_id=user_id)
+	
+		snipe.cleanup()
 
 
 #here are some sample calls when I was developing this

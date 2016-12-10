@@ -12,23 +12,7 @@ import string
 import random
 import time
 from HTMLParser import HTMLParser
-
-try:
-    # python 3
-    from urllib.parse import urlencode
-except ImportError:
-    # python 2
-    from urllib import urlencode
-
-#####CONFIG#####
-endpoint = "http://192.168.99.100" #no final /
-timeout = 10
-username = ""
-password = ""
-
-#private variables
-glob_token = None
-glob_cookie = None
+import urllib
 
 class FieldsetHtmlParser(HTMLParser):
 	def __init__(self):
@@ -142,62 +126,80 @@ class AssetdataHtmlParser(HTMLParser):
 	def getData(self):
 		return self.data
 
-def curlQuery(url_suffix, request_type, post_data=None, header=None):
-	global glob_cookie
-	if glob_cookie is None:
+
+class SnipeAPIAdapter():
+  #timeout in seconds, endpoint is http://snipeurl.com (no final /)
+  def __init__(self, endpoint, username, password, timeout=10):
+	self.timeout = timeout
+	self.username = username
+	self.password = password
+	self.endpoint = endpoint
+	
+	#private variables
+	self.glob_token = None
+	self.glob_cookie = None
+
+  def cleanup(self):
+	self.glob_token = None
+	self.glob_cookie = None
+	#remove the cookie, we don't need it now (global declaration only needed in sub-functions)
+	if self.glob_cookie is not None:
+		os.remove(self.glob_cookie.name)#remove the temporary cookie file now that we're done with our login/request
+
+  def curlQuery(self, url_suffix, request_type, post_data=None, header=None):
+	if self.glob_cookie is None:
 		#set a cookie to login and such
-		glob_cookie = tempfile.NamedTemporaryFile(delete=False)
+		self.glob_cookie = tempfile.NamedTemporaryFile(delete=False)
 		
 	response = cStringIO.StringIO()
 	c = pycurl.Curl()
-	c.setopt(c.URL, endpoint+url_suffix)
-	c.setopt(c.TIMEOUT, timeout)
-	c.setopt(c.COOKIEJAR, glob_cookie.name)
-	c.setopt(c.COOKIEFILE, glob_cookie.name)
+	c.setopt(c.URL, self.endpoint+url_suffix)
+	c.setopt(c.TIMEOUT, self.timeout)
+	c.setopt(c.COOKIEJAR, self.glob_cookie.name)
+	c.setopt(c.COOKIEFILE, self.glob_cookie.name)
 	c.setopt(c.CUSTOMREQUEST, request_type)
 	c.setopt(c.WRITEFUNCTION, response.write)
 	if header is not None:
 		c.setopt(c.HTTPHEADER, header)
 	if post_data is not None:
 		#e.g. post_data looks like post_data = {'field': 'value'}
-		postfields = urlencode(post_data)
+		postfields = urllib.urlencode(post_data)
 		c.setopt(c.POSTFIELDS, postfields)
 	c.perform()
 	c.close()
 	return response.getvalue()
 
-def queryAPI(api_suffix, post_data_api=None):
-	global glob_token
-	if glob_token is None:
-		token_response = curlQuery(url_suffix="/login", request_type="GET")
+  def queryAPI(self, api_suffix, post_data_api=None):
+	if self.glob_token is None:
+		token_response = self.curlQuery(url_suffix="/login", request_type="GET")
 		for line in token_response.split("\n"):
 			if "_token" in line:
 				parts = line.split("\"")
-				glob_token = parts[5]
+				self.glob_token = parts[5]
 				break
-		if glob_token is None:
+		if self.glob_token is None:
 			return ""
 	
 		#actually login
 		header = ["Accept: text/html,application/json"]
-		post_data = {'_token':glob_token,'username':username,'password':password}
-		curlQuery(url_suffix="/login", request_type="POST", post_data=post_data, header=header)
+		post_data = {'_token':self.glob_token,'username':self.username,'password':self.password}
+		self.curlQuery(url_suffix="/login", request_type="POST", post_data=post_data, header=header)
 	
 	#do the api query
-	header = ["Accept: text/html,application/json", "_token: "+glob_token]
+	header = ["Accept: text/html,application/json", "_token: "+self.glob_token]
 	if post_data_api is None:
-		data_reply = curlQuery(url_suffix=api_suffix, request_type="GET", header=header)
+		data_reply = self.curlQuery(url_suffix=api_suffix, request_type="GET", header=header)
 	else:
-		post_data_api.update({'_token':glob_token})
+		post_data_api.update({'_token':self.glob_token})
 		header = ["Accept: text/html,application/json"]
-		data_reply = curlQuery(url_suffix=api_suffix, request_type="POST", header=header, post_data=post_data_api)
+		data_reply = self.curlQuery(url_suffix=api_suffix, request_type="POST", header=header, post_data=post_data_api)
 		
 	return data_reply
 
-#returns all of the current status labels and ids for use in asset editing / creation
-def getStatusId():
+  #returns all of the current status labels and ids for use in asset editing / creation
+  def getStatusId(self):
 	out = {}
-	response = queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=25000")
+	response = self.queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=25000")
 	j_resp = json.loads(response)
 	if len(j_resp['rows']) > 0:
 		for row in j_resp['rows']:
@@ -205,15 +207,15 @@ def getStatusId():
 	return out
 	
 
-#init to deployed/deployable/54b552, fault/pending/ff0000, spare/deployable/ff7a00, repairing/pending/00cfff
-#in English: deletes all the starting statuses and initiates our statuses (only should be run once at db init, probably)... this is left as lingering code
-def initStatuses():
+  #init to deployed/deployable/54b552, fault/pending/ff0000, spare/deployable/ff7a00, repairing/pending/00cfff
+  #in English: deletes all the starting statuses and initiates our statuses (only should be run once at db init, probably)... this is left as lingering code
+  def initStatuses(self):
 	status = {"Deployed":"Deployable/54b552", "Fault":"Pending/ff0000", "Spare":"Deployable/ff7a00", "Repairing":"Pending/00cfff"}
 
 	#determine if the statuses are already in place, if not, add the new ones and delete the ones already there that shouldn't be there
 	unaltered = []
 	delete = []
-	response = queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=25000")
+	response = self.queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=25000")
 	j_resp = json.loads(response)
 	for row in j_resp['rows']:
 		if row['name'] in status:
@@ -233,32 +235,32 @@ def initStatuses():
 			parts = value.split("/")
 			#status label posted as all lower case...
 			post_data = {'name':key, 'statuslabel_types':parts[0].lower(), 'color':"#"+parts[1], 'notes':''}
-			response = queryAPI(api_suffix="/admin/settings/statuslabels/create", post_data_api=post_data)
+			response = self.queryAPI(api_suffix="/admin/settings/statuslabels/create", post_data_api=post_data)
 			print("added label "+key)
 		
 	for key in delete:
 		url = "/admin/settings/statuslabels/"+key+"/delete"
-		response = queryAPI(api_suffix=url)
+		response = self.queryAPI(api_suffix=url)
 		print("Deleted status "+key)
 
-def getManufacturerId(manufacturer=None):
+  def getManufacturerId(self, manufacturer=None):
 	if manufacturer is None:
 		return False
-	reply = queryAPI(api_suffix="/api/manufacturers/list?sort=asc&limit=25000&search="+manufacturer)
+	reply = self.queryAPI(api_suffix="/api/manufacturers/list?sort=asc&limit=25000&search="+manufacturer)
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		manu = row['name'].split("\">")[1].split("<")[0]
 		if manu == manufacturer:
 			return row['id']
 	post_data = {'name':manufacturer}
-	response = queryAPI(api_suffix="/admin/settings/manufacturers/create", post_data_api=post_data)
-	return getManufacturerId(manufacturer)
+	response = self.queryAPI(api_suffix="/admin/settings/manufacturers/create", post_data_api=post_data)
+	return self.getManufacturerId(manufacturer)
 
-#creates the company if it doesn't exist
-def getCompanyId(company=None):
+  #creates the company if it doesn't exist
+  def getCompanyId(self, company=None):
 	if company is None:
 		return False
-	reply = queryAPI(api_suffix="/admin/settings/companies")
+	reply = self.queryAPI(api_suffix="/admin/settings/companies")
 	stop = False
 	for line in reply.split("\n"):
 		if company in line:
@@ -267,30 +269,30 @@ def getCompanyId(company=None):
 			stop = line.split("/admin/settings/companies/")[1].split("/")[0]
 	if stop is False:
 		post_data = {'name':company}
-		response = queryAPI(api_suffix="/admin/settings/companies/create", post_data_api=post_data)
-		return getCompanyId(company)
+		response = self.queryAPI(api_suffix="/admin/settings/companies/create", post_data_api=post_data)
+		return self.getCompanyId(company)
 	return stop
 
-#defaults to asset type, can also be "accessory", "consumable", or "component"
-def getCategoryId(category=None, category_type="asset", eula_text=""):
+  #defaults to asset type, can also be "accessory", "consumable", or "component"
+  def getCategoryId(self, category=None, category_type="asset", eula_text=""):
 	if category is None:
 		return False
-	reply = queryAPI(api_suffix="/api/categories/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/categories/list?sort=asc&limit=25000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
 		if thename == category:
 			return row['id']
 	post_data = {'name':category, 'category_type':category_type, 'eula_text':eula_text}
-	response = queryAPI(api_suffix="/admin/settings/categories/create", post_data_api=post_data)
-	return getCategoryId(category)
+	response = self.queryAPI(api_suffix="/admin/settings/categories/create", post_data_api=post_data)
+	return self.getCategoryId(category)
 
-#this will automatically create a manufacturer and category if one doesn't exist (as defined here)
-def getAssetModelId(asset_model_name=None, manufacturer=None, category=None, model_number="", notes="", custom_fieldset_id=""):
+  #this will automatically create a manufacturer and category if one doesn't exist (as defined here)
+  def getAssetModelId(self, asset_model_name=None, manufacturer=None, category=None, model_number="", notes="", custom_fieldset_id=""):
 	if asset_model_name is None:
 		return False
 
-	reply = queryAPI(api_suffix="/api/models/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/models/list?sort=asc&limit=25000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -301,22 +303,22 @@ def getAssetModelId(asset_model_name=None, manufacturer=None, category=None, mod
 		return False
 	
 	#figure out what the category and manufacturer ids are (or create the missing ones)
-	manufacturer_id = getManufacturerId(manufacturer)
-	category_id = getCategoryId(category)
+	manufacturer_id = self.getManufacturerId(manufacturer)
+	category_id = self.getCategoryId(category)
 	
 	if category_id is None or manufacturer_id is None:
 		return False
 	
 	post_data = {'name':asset_model_name, 'modelno':model_number, 'note':notes, 'filename':'', 'custom_fieldset':custom_fieldset_id, \
 		'eol':'', 'depreciation_id':'', 'category_id':category_id, 'manufacturer_id':manufacturer_id}
-	response = queryAPI(api_suffix="/hardware/models/create", post_data_api=post_data)
-	return getAssetModelId(asset_model_name)
+	response = self.queryAPI(api_suffix="/hardware/models/create", post_data_api=post_data)
+	return self.getAssetModelId(asset_model_name)
 
-def getSupplierId(supplier_name=None, contact="", phone="", email="", notes=""):
+  def getSupplierId(self, supplier_name=None, contact="", phone="", email="", notes=""):
 	if supplier_name is None:
 		return False
 	
-	reply = queryAPI(api_suffix="/api/suppliers/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/suppliers/list?sort=asc&limit=25000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -324,14 +326,14 @@ def getSupplierId(supplier_name=None, contact="", phone="", email="", notes=""):
 			return row['id']
 
 	post_data = {'name':supplier_name, 'contact':contact, 'phone':phone, 'email':email, 'notes':notes, 'address':'', 'address2':'', 'city':'', 'state':'', 'country':'', 'zip':'', 'fax':'', 'url':''}
-	response = queryAPI(api_suffix="/admin/settings/suppliers/create", post_data_api=post_data)
-	return getSupplierId(supplier_name)
+	response = self.queryAPI(api_suffix="/admin/settings/suppliers/create", post_data_api=post_data)
+	return self.getSupplierId(supplier_name)
 
-def getLocationId(location_name=None, address="", city="", state="", zip=""):
+  def getLocationId(self, location_name=None, address="", city="", state="", zip=""):
 	if location_name is None:
 		return False
 	
-	reply = queryAPI(api_suffix="/api/locations/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=25000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -339,14 +341,14 @@ def getLocationId(location_name=None, address="", city="", state="", zip=""):
 			return row['id']
 
 	post_data = {'name':location_name, 'address':address, 'address2':'', 'city':city, 'state':state, 'country':'', 'zip':zip, 'currency':'', 'parent_id':''}
-	response = queryAPI(api_suffix="/admin/settings/locations/create", post_data_api=post_data)
-	return getLocationId(location_name)
+	response = self.queryAPI(api_suffix="/admin/settings/locations/create", post_data_api=post_data)
+	return self.getLocationId(location_name)
 
-def getUserGroupId(group_name=None):
+  def getUserGroupId(self, group_name=None):
 	if group_name is None:
 		return False
 	
-	reply = queryAPI(api_suffix="/api/groups/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/groups/list?sort=asc&limit=25000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		if row['name'] == group_name:
@@ -362,22 +364,22 @@ def getUserGroupId(group_name=None):
 		'permission[components.create]':0, 'permission[components.edit]':0, 'permission[components.delete]':0, 'permission[components.checkout]':0, \
 		'permission[components.checkin]':0, 'permission[users.view]':0, 'permission[users.create]':0, 'permission[users.edit]':0, 'permission[users.delete]':0, \
 		'name':group_name}
-	response = queryAPI(api_suffix="/admin/groups/create", post_data_api=post_data)
-	return getUserGroupId(group_name)
+	response = self.queryAPI(api_suffix="/admin/groups/create", post_data_api=post_data)
+	return self.getUserGroupId(group_name)
 
-#creates a user and returns that ID if nothing found
-#bus is the default group for new vehicles that hold hardware (users are containers here)
-def getUserId(username=None, group="bus"):
+  #creates a user and returns that ID if nothing found
+  #bus is the default group for new vehicles that hold hardware (users are containers here)
+  def getUserId(self, username=None, group="bus"):
 	if username is None:
 		return False
 	
-	request = queryAPI(api_suffix="/api/users/list?sort=asc&limit=25000&search="+username)
+	request = self.queryAPI(api_suffix="/api/users/list?sort=asc&limit=25000&search="+username)
 	j_request = json.loads(request)
 	for item in j_request['rows']:
 		if item['username'] == username:
 			return item['id']
 	
-	group_id = getUserGroupId(group_name=group)
+	group_id = self.getUserGroupId(group_name=group)
 
 	#create the user
 	random_pass = ''.join(random.sample(string.ascii_uppercase + string.digits*8, 8))
@@ -392,22 +394,25 @@ def getUserId(username=None, group="bus"):
 		'permission[components.checkin]':0, 'permission[users.view]':0, 'permission[users.create]':0, 'permission[users.edit]':0, 'permission[users.delete]':0, \
 		'first_name':username, 'last_name':'', 'username':username, 'password':random_pass, 'password_confirm':random_pass, 'email':'', 'company_id':0, 'locale':'', \
 		'employee_num':'', 'jobtitle':'', 'manager_id':'', 'location_id':'', 'phone':'', 'activated':1, 'notes':'', 'groups[]':group_id}
-	response = queryAPI(api_suffix="/admin/users/create", post_data_api=post_data)
-	return getUserId(username) #simply call this function again to get the user id once we've posted.
+	response = self.queryAPI(api_suffix="/admin/users/create", post_data_api=post_data)
+	return self.getUserId(username) #simply call this function again to get the user id once we've posted.
 
-def getAssetId(tag=None, user_id="", model_id="", status_id="", serial="", company_id="", supplier_id="", purchase_date="", purchase_cost="", order="", warranty_months="", notes="", location_id="", custom_field_def={}):
+  def getAssetId(self, tag=None, user_id="", model_id=None, status_id=None, serial="", company_id="", supplier_id="", purchase_date="", purchase_cost="", order="", warranty_months="", notes="", location_id="", custom_field_def={}):
 	if tag is None:
 		return False
 	if purchase_cost is not "":
 		purchase_cost = ("%.2f" % float(purchase_cost))
 	
-	response = queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=25&search="+tag)
+	response = self.queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=25&search="+tag)
 	j_response = json.loads(response)
 	for row in j_response['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0].replace("\\", "")
 		if thename == tag:
 			return row['id']
 	
+	if model_id is None or status_id is None:
+		return False #return false for these only if we aren't doing a lookup
+
 	#purchase_date in yyyy-mm-dd
 	post_data = {'asset_tag':tag, 'model_id':model_id, 'status_id':status_id, 'assigned_to':user_id, 'serial':serial, 'name':tag, 'company_id':company_id, \
 		'purchase_date':purchase_date, 'supplier_id':supplier_id, 'order_number':order, 'purchase_cost':purchase_cost, 'warranty_months':warranty_months, \
@@ -416,17 +421,28 @@ def getAssetId(tag=None, user_id="", model_id="", status_id="", serial="", compa
 		for key in custom_field_def:
 			thekey = "_snipeit_"+key.lower()
 			post_data[thekey] = custom_field_def[key]
-	response = queryAPI(api_suffix="/hardware/create", post_data_api=post_data)
-	return getAssetId(tag)
+	response = self.queryAPI(api_suffix="/hardware/create", post_data_api=post_data)
+	return self.getAssetId(tag)
 
-def getAssetData(id=None, custom_field_def={}):
+  def getAssetUsername(self, tag=None):
+	if not id:
+		return False
+	response = self.queryAPI(api_suffix="/api/hardware/list?search="+str(tag))
+	j_response = json.loads(response)
+	for row in j_response['rows']:
+		thename = row['name'].split("\">")[1].split("<")[0].replace("\\", "")
+		if thename == tag:
+			return row['assigned_to'].split("\">")[1].split("<")[0].replace("\\", "")
+	return False
+
+  def getAssetData(self, id=None, custom_field_def={}):
 	if not id:
 		return False
 	if not str(id).isdigit():
 		return False
 
 	#get the data from the edit page by parsing the HTML form fields
-	html = queryAPI(api_suffix="/hardware/"+str(id)+"/edit")
+	html = self.queryAPI(api_suffix="/hardware/"+str(id)+"/edit")
 	parser = AssetdataHtmlParser()
 	parser.feed(html)
 	data = parser.getData()
@@ -448,15 +464,15 @@ def getAssetData(id=None, custom_field_def={}):
 					post_data[item[0]] = item[1]
 	return post_data
 
-def editAsset(tag=None, model_id=None, status_id=None, serial=None, company_id=None, supplier_id=None, purchase_date=None, purchase_cost=None, order=None, warranty_months=None, notes=None, location_id=None, custom_field_def={}):
+  def editAsset(self, tag=None, model_id=None, status_id=None, serial=None, company_id=None, supplier_id=None, purchase_date=None, purchase_cost=None, order=None, warranty_months=None, notes=None, location_id=None, custom_field_def={}):
 	if tag is None:
 		return False
 	if purchase_cost is not None:
 		purchase_cost = ("%.2f" % float(purchase_cost))
-	asset_id = getAssetId(tag)
+	asset_id = self.getAssetId(tag)
 	if not asset_id:
 		return False
-	existing_data = getAssetData(id=asset_id, custom_field_def=custom_field_def)
+	existing_data = self.getAssetData(id=asset_id, custom_field_def=custom_field_def)
 	
 	#purchase_date in yyyy-mm-dd
 	edit_data = {'asset_tag':tag, 'model_id':model_id, 'status_id':status_id, 'serial':serial, 'name':tag, 'company_id':company_id, \
@@ -481,12 +497,12 @@ def editAsset(tag=None, model_id=None, status_id=None, serial=None, company_id=N
 		existing_data['notes'] = "ChangesTimeKeyOldNew("+time.strftime("%Y-%m-%d %H:%M:%S")+"): "+str(changes)+"\n"+existing_data['notes']
 
 		#publish the data with a new note
-		queryAPI(api_suffix="/hardware/"+str(asset_id)+"/edit", post_data_api=existing_data)
+		self.queryAPI(api_suffix="/hardware/"+str(asset_id)+"/edit", post_data_api=existing_data)
 		print "Data Edited Successfully on asset "+str(tag)+"("+str(asset_id)+")! Changes(keyoldnew): "+str(changes)
 	return asset_id
 
-#checkout_date in yyyy-mm-dd
-def checkout(asset_id=None, user_id=None, checkout_date=None, notes=''):
+  #checkout_date in yyyy-mm-dd
+  def checkout(self, asset_id=None, user_id=None, checkout_date=None, notes=''):
 	if asset_id is None or user_id is None:
 		return False
 	if checkout_date is None:
@@ -495,12 +511,12 @@ def checkout(asset_id=None, user_id=None, checkout_date=None, notes=''):
 		return False
 
 	post_data = {'assigned_to':user_id, 'checkout_at':checkout_date, 'expected_checkin':'', 'note':notes}
-	response = queryAPI(api_suffix="/hardware/"+str(asset_id)+"/checkout", post_data_api=post_data)
+	response = self.queryAPI(api_suffix="/hardware/"+str(asset_id)+"/checkout", post_data_api=post_data)
 	return True
 
-def getCustomFieldData():
+  def getCustomFieldData(self):
 	#get the data from the edit page by parsing the HTML form fields	
-	html = queryAPI(api_suffix="/admin/custom_fields")
+	html = self.queryAPI(api_suffix="/admin/custom_fields")
         parser = FieldsetHtmlParser()
         parser.feed(html)
 	fieldsets = parser.get_fieldsets()
@@ -508,12 +524,12 @@ def getCustomFieldData():
         parser.close()
 	return [fieldsets, fields]
 
-#only add fieldsets that don't exist
-def getCustomFieldSets(name=None, custom_fields=[]):
+  #only add fieldsets that don't exist
+  def getCustomFieldSets(self, name=None, custom_fields=[]):
 	if name is None:
 		return False
 
-	[fieldsets, fields] = getCustomFieldData()
+	[fieldsets, fields] = self.getCustomFieldData()
 	
 	fieldset_id = None
 	for key in fieldsets:
@@ -549,69 +565,23 @@ def getCustomFieldSets(name=None, custom_fields=[]):
 		if len(new_fields) > 0:
 			for thefn in new_fields:
 				post_data = {'name':thefn, 'element':'text', 'field_values':'', 'format':'ANY', 'custom_format':''}
-				queryAPI(api_suffix="/admin/custom_fields/create-field", post_data_api=post_data)
+				self.queryAPI(api_suffix="/admin/custom_fields/create-field", post_data_api=post_data)
 		
 		#add the fieldset
-		[fieldsets, fields] = getCustomFieldData()
+		[fieldsets, fields] = self.getCustomFieldData()
 		assoc_fids = []
 		for key in fields:
 			if fields[key]['name'] in custom_fields:
 				assoc_fids.append(key)
 		order = 0
 		post_data = {'name':name}
-		result = queryAPI(api_suffix="/admin/custom_fields", post_data_api=post_data)
+		result = self.queryAPI(api_suffix="/admin/custom_fields", post_data_api=post_data)
 		for line in result.split("\n"):
 			if "http-equiv=\"refresh\"" in line:
 				new_fs_id = line.split("\"")[-2].split("/")[-1]
 				for fkey in assoc_fids:
 					order = order + 1
 					post_data = {'order':str(order), 'field_id':str(fkey)}
-					queryAPI(api_suffix="/admin/custom_fields/"+str(new_fs_id)+"/associate", post_data_api=post_data)
+					self.queryAPI(api_suffix="/admin/custom_fields/"+str(new_fs_id)+"/associate", post_data_api=post_data)
 				return new_fs_id
 	return False
-
-if __name__ == "__main__":
-
-	#examples for using all of the functions
-
-	#create custom fieldset with fields if it doesn't exist
-	#monitorable_custom_fields = ["Monitoring"]
-	#fieldset_id = getCustomFieldSets(name="Monitorable", custom_fields=monitorable_custom_fields)
-	#print fieldset_id
-	
-	#fieldset_id = 15
-	#asset_model_id = getAssetModelId(asset_model_name="test-post-assetmodelD", manufacturer="test-post-ManufacturerF", category="test-post-categoryF", custom_fieldset_id=fieldset_id)
-	#print asset_model_id
-
-	#asset_model_id = 8
-	#user_id = getUserId("85125", "mjq")
-	#asset_id = getAssetId(tag='buscis/384-555-532', model_id=asset_model_id, status_id='6', purchase_date='2016-03-24', custom_field_def={"Monitoring":"test"})
-
-	#asset_id = editAsset(tag='buscis/384-555-532', custom_field_def={"Monitoring":"editedtest"})
-
-	#init stuff if you wish to change things initially
-	#if initStatuses():
-	#	print("success")
-	
-	#run before creating an asset (along with the init stuff)
-	#company_id = getCompanyId("test-post-company")
-	#manufacturer_id = getManufacturerId("test-post-ManufacturerB")#create this function
-	#category_id = getCategoryId("test-post-category")
-	#asset_model_id = getAssetModelId(asset_model_name="test-post-assetmodelC", manufacturer="test-post-ManufacturerF", category="test-post-categoryF")
-	#supplier_id = getSupplierId(supplier_name="test-post-supplier", contact="test-supplier-contact", phone="6312322235", email="test@gmail.com", notes="test-supplier-notes")
-	#location_id = getLocationId(location_name="test-post-depot-location")
-	#statuses = getStatusId()
-	
-	#user_id = getUserId("85125", "mjq")
-	
-	#checkout(asset_id=asset_id, user_id='3')
-	
-	
-	
-	#remove the cookie, we don't need it now (global declaration only needed in sub-functions)
-	if glob_cookie is not None:
-		os.remove(glob_cookie.name)#remove the temporary cookie file now that we're done with our login/request
-	
-
-
-

@@ -305,7 +305,7 @@ class SnipeAPIAdapter():
 	#figure out what the category and manufacturer ids are (or create the missing ones)
 	manufacturer_id = self.getManufacturerId(manufacturer)
 	
-	if category.isdigit():
+	if str(category).isdigit():
 		category_id = category
 	else:
 		category_id = self.getCategoryId(category)

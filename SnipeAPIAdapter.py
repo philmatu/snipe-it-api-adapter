@@ -443,7 +443,7 @@ class SnipeAPIAdapter():
 			return row['assigned_to'].split("\">")[1].split("<")[0].replace("\\", "")
 	return False
 
-  def getAssetData(self, id=None, custom_field_def={}):
+  def getAssetData(self, id=None, custom_field_def=[]):
 	if not id:
 		return False
 	if not str(id).isdigit():

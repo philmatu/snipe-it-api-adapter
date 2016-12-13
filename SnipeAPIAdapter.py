@@ -337,6 +337,10 @@ class SnipeAPIAdapter():
 	if location_name is None:
 		return False
 	
+	if len(location_name) < 3:
+		print("The location "+str(location_name)+" is too short, it must be at least 3 characters")
+		return False
+	
 	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=25000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:

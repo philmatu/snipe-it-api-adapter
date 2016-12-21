@@ -68,5 +68,6 @@ Intended to be used on AWS Lambda, hence not using libraries like BeautifulSoup,
         #statuses = getStatusId()
 
         #user_id = getUserId("85125", "mjq")
-
         #checkout(asset_id=asset_id, user_id='3')	
+	
+	#snipe.createMaintenanceAction(asset_id=1, supplier_id=1, maintenancetype="Maintenance", name="autotest", start="2016-12-29")

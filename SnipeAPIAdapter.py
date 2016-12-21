@@ -542,6 +542,27 @@ class SnipeAPIAdapter():
 	response = self.queryAPI(api_suffix="/hardware/"+str(asset_id)+"/checkout", post_data_api=post_data)
 	return True
 
+  #create a new maintenance action, maintenacetype is "Repair", "Upgrade", "Maintenance"; start/end are in yyyy-mm-dd; one of supplier_name or supplier_id must be filled in
+  def createMaintenanceAction(self, asset_id, maintenancetype, name, start, supplier_id="", supplier_name="", end="", warrantyImprovement=False, cost="", notes=""):
+	types = ["Repair", "Upgrade", "Maintenance"]
+	if not str(asset_id).isdigit() or maintenancetype not in types or len(name) < 4:
+		return False
+	
+	if len(str(supplier_id)) < 1:
+		if len(supplier_name) < 4:
+			return False
+		supplier_id = self.getSupplierId(supplier_name=supplier_name)
+	
+	post_data = {'asset_id':asset_id, 'supplier_id':supplier_id, 'asset_maintenance_type':maintenancetype, 'title':name, 'start_date':start, \
+		'completion_date':end, 'cost':cost, 'notes':notes}
+	
+	if warrantyImprovement is True:
+		post_data.update({'is_warranty':1})
+	
+	response = self.queryAPI(api_suffix="/admin/asset_maintenances/create", post_data_api=post_data)
+	print response
+	return True
+
   def getCustomFieldData(self):
 	#get the data from the edit page by parsing the HTML form fields	
 	html = self.queryAPI(api_suffix="/admin/custom_fields")

@@ -375,6 +375,15 @@ class SnipeAPIAdapter():
 	response = self.queryAPI(api_suffix="/admin/groups/create", post_data_api=post_data)
 	return self.getUserGroupId(group_name)
 
+  #gets all the users in the system (100k of them at least... if we have more than this, there is likely an issue)
+  def getUserIds(self, prefix=""):
+	ids = {}
+	response = self.queryAPI(api_suffix="/api/users/list?sort=asc&limit=100000&search="+prefix)
+	j_response = json.loads(response)
+	for row in j_response['rows']:
+		ids.update({row['id']:row['username']})
+	return ids
+
   #creates a user and returns that ID if nothing found
   #bus is the default group for new vehicles that hold hardware (users are containers here)
   def getUserId(self, username=None, group="bus"):

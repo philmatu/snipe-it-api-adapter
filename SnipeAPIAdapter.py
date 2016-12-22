@@ -170,7 +170,14 @@ class SnipeAPIAdapter():
 		#e.g. post_data looks like post_data = {'field': 'value'}
 		postfields = urllib.urlencode(post_data)
 		c.setopt(c.POSTFIELDS, postfields)
-	c.perform()
+	
+	while True:
+		try:
+			c.perform()
+			break
+		except:
+			print("Failed to query "+str(url_suffix)+"... Retrying")
+	
 	c.close()
 	return response.getvalue()
 

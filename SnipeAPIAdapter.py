@@ -534,7 +534,8 @@ class SnipeAPIAdapter():
 		if item[0] in post_data:
 			if len(item) > 1:
 				if len(item[1]) > 0:
-					post_data[item[0]] = item[1]
+					if not item[1].lower().strip() == "none":
+						post_data[item[0]] = item[1]
 	return post_data
 
   def editAsset(self, tag=None, data_array=None, asset_id=None, model_id=None, status_id=None, serial=None, company_id=None, supplier_id=None, purchase_date=None, purchase_cost=None, order=None, warranty_months=None, notes=None, location_id=None, custom_field_def={}):

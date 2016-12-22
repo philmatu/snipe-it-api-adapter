@@ -80,13 +80,13 @@ class AssetdataHtmlParser(HTMLParser):
 		self.lastvalue = None
 		self.lastdata = None
 		self.lasttag = None
+		self.closed = True
 	def handle_starttag(self, tag, attributes):
 		if tag == 'option':
 			if "selected" in str(attributes):
 				for key, value in attributes:
 					if key == "value":
 						self.lastvalue = value
-						self.open = True
 		if tag == 'textarea' or tag == 'select' or tag == 'input':
 			self.lastkey = None
 			self.lastvalue = None
@@ -96,9 +96,13 @@ class AssetdataHtmlParser(HTMLParser):
 					self.lastkey = value
 				if key == "value":
 					self.lastvalue = value
+			#patch for the missing input closing tag on snipeit custom fields parsing
+			if self.open and self.lastkey is not None and tag == 'input':
+				self.data.append([self.lastkey, str(self.lastvalue).strip()])
+		
 		if tag == 'textarea':
 			self.lasttag = 'textarea'
-			self.open = True
+		self.open = True
 			
 	def handle_data(self, data):
 		if self.open:
@@ -110,18 +114,19 @@ class AssetdataHtmlParser(HTMLParser):
 				return
 			if not data.startswith("Select") and "No custom fields" not in data:
 				self.lastdata = data
+	
 	def handle_endtag(self, tag):
 		if self.lasttag == 'textarea':
 			self.lasttag = None
 			self.open = False
-		if tag == 'select' or tag == 'input' or tag == 'textarea':
+		elif tag == 'select' or tag == 'input' or tag == 'textarea':
 			if self.lastdata is not None:
-				self.data.append([self.lastkey, self.lastvalue, self.lastdata])
+				self.data.append([self.lastkey, str(self.lastvalue).strip(), str(self.lastdata).strip()])
 			elif self.lastvalue is not None:
-				self.data.append([self.lastkey, self.lastvalue])
+				self.data.append([self.lastkey, str(self.lastvalue).strip()])
 			else:
 				self.data.append([self.lastkey])
-		self.open = False
+			self.open = False
 			
 	def getData(self):
 		return self.data
@@ -256,6 +261,27 @@ class SnipeAPIAdapter():
 	response = self.queryAPI(api_suffix="/admin/settings/manufacturers/create", post_data_api=post_data)
 	return self.getManufacturerId(manufacturer)
 
+  #gets the company name from the ID using the listing page (html parsing)
+  def getCompanyName(self, company_id):
+	reply = self.queryAPI(api_suffix="/admin/settings/companies")
+	start = 0
+	id = ""
+	for line in reply.split("\n"):
+		if start > 0:
+			if "<td>" in line:
+				if start == 1:
+					id = line.split(">")[1].split("<")[0]
+				if start == 2:
+					name = line.split(">")[1].split("<")[0]
+					if str(id).strip() == str(company_id).strip():
+						return name
+				start = start + 1
+			if "</tr>" in line:
+				start = 1
+		if "Company Name</th>" in line:
+			start = 1
+	return False
+
   #creates the company if it doesn't exist
   def getCompanyId(self, company=None):
 	if company is None:
@@ -286,6 +312,16 @@ class SnipeAPIAdapter():
 	post_data = {'name':category, 'category_type':category_type, 'eula_text':eula_text}
 	response = self.queryAPI(api_suffix="/admin/settings/categories/create", post_data_api=post_data)
 	return self.getCategoryId(category)
+
+  def getAssetModelNameFromId(self, asset_id):
+	#there shouldn't be more than 25000 asset model names, if there are, this should be rethought out
+	reply = self.queryAPI(api_suffix="/api/models/list?sort=asc&limit=25000")
+	j_reply = json.loads(reply)
+	for row in j_reply['rows']:
+		theid = str(row['id'])
+		thename = row['name'].split("\">")[1].split("<")[0]
+		if str(asset_id) == theid:
+			return thename
 
   #this will automatically create a manufacturer and category if one doesn't exist (as defined here)
   def getAssetModelId(self, asset_model_name=None, manufacturer=None, category=None, model_number="", notes="", custom_fieldset_id=""):
@@ -332,6 +368,15 @@ class SnipeAPIAdapter():
 	post_data = {'name':supplier_name, 'contact':contact, 'phone':phone, 'email':email, 'notes':notes, 'address':'', 'address2':'', 'city':'', 'state':'', 'country':'', 'zip':'', 'fax':'', 'url':''}
 	response = self.queryAPI(api_suffix="/admin/settings/suppliers/create", post_data_api=post_data)
 	return self.getSupplierId(supplier_name)
+
+  def getLocationName(self, location_id):
+	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=25000")
+	j_reply = json.loads(reply)
+	for row in j_reply['rows']:
+		thename = row['name'].split("\">")[1].split("<")[0]
+		if str(location_id).strip() == str(row['id']).strip():
+			return thename
+	return False
 
   def getLocationId(self, location_name=None, address="", city="", state="", zip=""):
 	if location_name is None:
@@ -479,12 +524,12 @@ class SnipeAPIAdapter():
 	post_data = {'asset_tag':'', 'model_id':'', 'status_id':'', 'assigned_to':'', 'serial':'', 'name':'', 'company_id':'', \
 		'purchase_date':'', 'supplier_id':'', 'order_number':'', 'purchase_cost':'', 'warranty_months':'', \
 		'notes':'', 'rtd_location_id':'', 'requestable':'', 'image':''}
-
+	
 	if len(custom_field_def) > 0:
 		for key in custom_field_def:
 			thekey = "_snipeit_"+key.lower()
 			post_data[thekey] = ''
-
+	
 	for item in data:
 		if item[0] in post_data:
 			if len(item) > 1:
@@ -492,9 +537,15 @@ class SnipeAPIAdapter():
 					post_data[item[0]] = item[1]
 	return post_data
 
-  def editAsset(self, tag=None, model_id=None, status_id=None, serial=None, company_id=None, supplier_id=None, purchase_date=None, purchase_cost=None, order=None, warranty_months=None, notes=None, location_id=None, custom_field_def={}):
+  def editAsset(self, tag=None, data_array=None, asset_id=None, model_id=None, status_id=None, serial=None, company_id=None, supplier_id=None, purchase_date=None, purchase_cost=None, order=None, warranty_months=None, notes=None, location_id=None, custom_field_def={}):
 	if tag is None:
-		return False
+		#to do the data array post (editing from outside source), we must have both the asset id and data array with ALL variables populated correctly
+		if data_array is None or asset_id is None:
+			return False
+		#use the data array to post back to the management system
+		self.queryAPI(api_suffix="/hardware/"+str(asset_id)+"/edit", post_data_api=data_array)
+		return True
+
 	if purchase_cost is not None:
 		purchase_cost = ("%.2f" % float(purchase_cost))
 	asset_id = self.getAssetId(tag)
@@ -560,7 +611,6 @@ class SnipeAPIAdapter():
 		post_data.update({'is_warranty':1})
 	
 	response = self.queryAPI(api_suffix="/admin/asset_maintenances/create", post_data_api=post_data)
-	print response
 	return True
 
   def getCustomFieldData(self):

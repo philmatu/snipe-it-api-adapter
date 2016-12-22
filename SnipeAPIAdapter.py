@@ -294,17 +294,23 @@ class SnipeAPIAdapter():
 	if company is None:
 		return False
 	reply = self.queryAPI(api_suffix="/admin/settings/companies")
-	stop = False
+	start = 0
+	id = ""
 	for line in reply.split("\n"):
-		if company in line:
-			stop = True
-		if stop and "/admin/settings/companies/" in line:
-			stop = line.split("/admin/settings/companies/")[1].split("/")[0]
-	if stop is False:
-		post_data = {'name':company}
-		response = self.queryAPI(api_suffix="/admin/settings/companies/create", post_data_api=post_data)
-		return self.getCompanyId(company)
-	return stop
+		if start > 0:
+			if "<td>" in line:
+				if start == 1:
+					id = line.split(">")[1].split("<")[0]
+				if start == 2:
+					name = line.split(">")[1].split("<")[0]
+					if str(name).strip() == str(company).strip():
+						return id
+				start = start + 1
+			if "</tr>" in line:
+				start = 1
+		if "Company Name</th>" in line:
+			start = 1
+	return False
 
   #defaults to asset type, can also be "accessory", "consumable", or "component"
   def getCategoryId(self, category=None, category_type="asset", eula_text=""):

@@ -81,6 +81,8 @@ class AssetdataHtmlParser(HTMLParser):
 		self.lastdata = None
 		self.lasttag = None
 		self.closed = True
+		self.lastcheck = False
+		self.ischeck = False
 	def handle_starttag(self, tag, attributes):
 		if tag == 'option':
 			if "selected" in str(attributes):
@@ -96,10 +98,22 @@ class AssetdataHtmlParser(HTMLParser):
 					self.lastkey = value
 				if key == "value":
 					self.lastvalue = value
+				if key == "checked":
+					self.lastchecked = True
+				if key == "type":
+					if value.lower() == "checkbox":
+						self.ischeck = True
 			#patch for the missing input closing tag on snipeit custom fields parsing
 			if self.open and self.lastkey is not None and tag == 'input':
-				self.data.append([self.lastkey, str(self.lastvalue).strip()])
-		
+				if self.lastchecked and self.ischeck:
+					self.data.append([self.lastkey, "1"])
+				else:
+					self.data.append([self.lastkey, str(self.lastvalue).strip()])
+				self.open = False
+				self.lastchecked = False
+				self.ischeck = False
+				return
+			
 		if tag == 'textarea':
 			self.lasttag = 'textarea'
 		self.open = True
@@ -118,7 +132,6 @@ class AssetdataHtmlParser(HTMLParser):
 	def handle_endtag(self, tag):
 		if self.lasttag == 'textarea':
 			self.lasttag = None
-			self.open = False
 		elif tag == 'select' or tag == 'input' or tag == 'textarea':
 			if self.lastdata is not None:
 				self.data.append([self.lastkey, str(self.lastvalue).strip(), str(self.lastdata).strip()])
@@ -126,8 +139,10 @@ class AssetdataHtmlParser(HTMLParser):
 				self.data.append([self.lastkey, str(self.lastvalue).strip()])
 			else:
 				self.data.append([self.lastkey])
-			self.open = False
-			
+		self.open = False
+		self.lastchecked = False
+		self.ischeck = False
+		
 	def getData(self):
 		return self.data
 

@@ -519,12 +519,21 @@ class SnipeAPIAdapter():
   #gets all the assets in the system (250k of them at least... if we have more than this, there is likely an issue)
   def getAssetIds(self, prefix=""):
 	ids = {}
-	response = self.queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=250000&search="+prefix)
-	j_response = json.loads(response)
-	for row in j_response['rows']:
-		thename = row['name'].split("\">")[1].split("<")[0].replace("\\", "")
-		theid = row['id']
-		ids.update({theid:thename})
+	#need to loop for this data (1000 max at a time supported by snipe)
+	offset = 0
+	total = 1
+	
+	#doing 1000 at a time
+	while offset < total:
+		print ("Asset ids retrieving query offset "+str(offset)+" of total asset count "+str(total))
+		response = self.queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=1000&&offset="+str(offset)+"search="+prefix)
+		j_response = json.loads(response)
+		total = j_response['total']
+		offset = offset + 1000
+		for row in j_response['rows']:
+			thename = row['name'].split("\">")[1].split("<")[0].replace("\\", "")
+			theid = row['id']
+			ids.update({theid:thename})
 	return ids
 
   def getAssetId(self, tag=None, user_id="", model_id=None, status_id=None, serial="", company_id="", supplier_id="", purchase_date="", purchase_cost="", order="", warranty_months="", notes="", location_id="", custom_field_def={}):

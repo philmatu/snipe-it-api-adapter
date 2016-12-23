@@ -460,6 +460,32 @@ class SnipeAPIAdapter():
 		ids.update({row['id']:row['username']})
 	return ids
 
+  #changes the group of the user id in 3 queries (we shouldn't use this often enough to justify using a cached group name)
+  def editUserGroup(self, username, group):
+	user_id = False
+	request = self.queryAPI(api_suffix="/api/users/list?sort=asc&limit=25&search="+username)
+	j_request = json.loads(request)
+	for item in j_request['rows']:
+		if item['username'] == username:
+			user_id = item['id']
+	new_group_id = self.getUserGroupId(group_name=group)
+	if new_group_id is False or user_id is False:
+		return False
+		
+	post_data = {'permission[superuser]':0,'permission[admin]':0,'permission[reports.view]':0,'permission[assets.view]':0, \
+		'permission[assets.create]':0, 'permission[assets.edit]':0, 'permission[assets.delete]':0, 'permission[assets.checkin]':0, \
+		'permission[assets.checkout]':0, 'permission[assets.view.requestable]':0, 'permission[accessories.view]':0, 'permission[accessories.create]':0, \
+		'permission[accessories.edit]':0, 'permission[accessories.delete]':0, 'permission[accessories.checkout]':0, 'permission[accessories.checkin]':0, \
+		'permission[consumables.view]':0, 'permission[consumables.create]':0, 'permission[consumables.edit]':0, 'permission[consumables.delete]':0, \
+		'permission[consumables.checkout]':0, 'permission[licenses.view]':0, 'permission[licenses.create]':0, 'permission[licenses.edit]':0, \
+		'permission[licenses.delete]':0, 'permission[licenses.checkout]':0, 'permission[licenses.keys]':0, 'permission[components.view]':0, \
+		'permission[components.create]':0, 'permission[components.edit]':0, 'permission[components.delete]':0, 'permission[components.checkout]':0, \
+		'permission[components.checkin]':0, 'permission[users.view]':0, 'permission[users.create]':0, 'permission[users.edit]':0, 'permission[users.delete]':0, \
+		'first_name':username, 'last_name':'', 'username':username, 'password':'', 'password_confirm':'', 'email':'', 'company_id':0, 'locale':'', \
+		'employee_num':'', 'jobtitle':'', 'manager_id':'', 'location_id':'', 'phone':'', 'activated':1, 'notes':'', 'groups[]':new_group_id}
+	response = self.queryAPI(api_suffix="/admin/users/"+str(user_id)+"/edit", post_data_api=post_data)
+	return True
+
   #creates a user and returns that ID if nothing found
   #bus is the default group for new vehicles that hold hardware (users are containers here)
   def getUserId(self, username=None, group="bus"):

@@ -453,13 +453,22 @@ class SnipeAPIAdapter():
 
   #gets all the users in the system (100k of them at least... if we have more than this, there is likely an issue)
   def getUserIds(self, prefix=""):
+	#need to loop for this data (1000 max at a time supported by snipe)
+	offset = 0
+	total = 1
 	ids = {}
-	response = self.queryAPI(api_suffix="/api/users/list?sort=asc&limit=100000&search="+prefix)
-	j_response = json.loads(response)
-	for row in j_response['rows']:
-		ids.update({row['id']:row['username']})
+	
+	#doing 1000 at a time
+	while offset < total:
+		print ("User ids retrieving query offset "+str(offset)+" of total user count "+str(total))
+		response = self.queryAPI(api_suffix="/api/users/list?sort=asc&offset="+str(offset)+"&limit=1000&search="+prefix)
+		j_response = json.loads(response)
+		total = j_response['total']
+		offset = offset + 1000
+		for row in j_response['rows']:
+			ids.update({row['id']:row['username']})
 	return ids
-
+	 
   #changes the group of the user id in 3 queries (we shouldn't use this often enough to justify using a cached group name)
   def editUserGroup(self, username, group):
 	user_id = False

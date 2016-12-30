@@ -173,7 +173,7 @@ class SnipeAPIAdapter():
 		
 	response = cStringIO.StringIO()
 	c = pycurl.Curl()
-	c.setopt(c.URL, self.endpoint+url_suffix)
+	c.setopt(c.URL, str(self.endpoint)+str(url_suffix))
 	c.setopt(c.TIMEOUT, self.timeout)
 	c.setopt(c.COOKIEJAR, self.glob_cookie.name)
 	c.setopt(c.COOKIEFILE, self.glob_cookie.name)
@@ -226,7 +226,7 @@ class SnipeAPIAdapter():
   #returns all of the current status labels and ids for use in asset editing / creation
   def getStatusId(self):
 	out = {}
-	response = self.queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=25000")
+	response = self.queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=1000")
 	j_resp = json.loads(response)
 	if len(j_resp['rows']) > 0:
 		for row in j_resp['rows']:
@@ -242,7 +242,7 @@ class SnipeAPIAdapter():
 	#determine if the statuses are already in place, if not, add the new ones and delete the ones already there that shouldn't be there
 	unaltered = []
 	delete = []
-	response = self.queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=25000")
+	response = self.queryAPI(api_suffix="/api/statuslabels/list?sort=asc&limit=1000")
 	j_resp = json.loads(response)
 	for row in j_resp['rows']:
 		if row['name'] in status:
@@ -273,7 +273,7 @@ class SnipeAPIAdapter():
   def getManufacturerId(self, manufacturer=None):
 	if manufacturer is None:
 		return False
-	reply = self.queryAPI(api_suffix="/api/manufacturers/list?sort=asc&limit=25000&search="+manufacturer)
+	reply = self.queryAPI(api_suffix="/api/manufacturers/list?sort=asc&limit=1000&search="+manufacturer)
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		manu = row['name'].split("\">")[1].split("<")[0]
@@ -334,7 +334,7 @@ class SnipeAPIAdapter():
   def getCategoryId(self, category=None, category_type="asset", eula_text=""):
 	if category is None:
 		return False
-	reply = self.queryAPI(api_suffix="/api/categories/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/categories/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -345,8 +345,8 @@ class SnipeAPIAdapter():
 	return self.getCategoryId(category)
 
   def getAssetModelNameFromId(self, asset_id):
-	#there shouldn't be more than 25000 asset model names, if there are, this should be rethought out
-	reply = self.queryAPI(api_suffix="/api/models/list?sort=asc&limit=25000")
+	#there shouldn't be more than 1000 asset model names, if there are, this should be rethought out
+	reply = self.queryAPI(api_suffix="/api/models/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		theid = str(row['id'])
@@ -359,7 +359,7 @@ class SnipeAPIAdapter():
 	if asset_model_name is None:
 		return False
 
-	reply = self.queryAPI(api_suffix="/api/models/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/models/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -389,7 +389,7 @@ class SnipeAPIAdapter():
 	if supplier_name is None:
 		return False
 	
-	reply = self.queryAPI(api_suffix="/api/suppliers/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/suppliers/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -401,7 +401,7 @@ class SnipeAPIAdapter():
 	return self.getSupplierId(supplier_name)
 
   def getLocationName(self, location_id):
-	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -417,7 +417,7 @@ class SnipeAPIAdapter():
 		print("The location "+str(location_name)+" is too short, it must be at least 3 characters")
 		return False
 	
-	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/locations/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		thename = row['name'].split("\">")[1].split("<")[0]
@@ -432,7 +432,7 @@ class SnipeAPIAdapter():
 	if group_name is None:
 		return False
 	
-	reply = self.queryAPI(api_suffix="/api/groups/list?sort=asc&limit=25000")
+	reply = self.queryAPI(api_suffix="/api/groups/list?sort=asc&limit=1000")
 	j_reply = json.loads(reply)
 	for row in j_reply['rows']:
 		if row['name'] == group_name:
@@ -501,7 +501,7 @@ class SnipeAPIAdapter():
 	if username is None:
 		return False
 	
-	request = self.queryAPI(api_suffix="/api/users/list?sort=asc&limit=25000&search="+username)
+	request = self.queryAPI(api_suffix="/api/users/list?sort=asc&limit=1000&search="+username)
 	j_request = json.loads(request)
 	for item in j_request['rows']:
 		if item['username'] == username:

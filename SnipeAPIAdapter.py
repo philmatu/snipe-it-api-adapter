@@ -186,10 +186,11 @@ class SnipeAPIAdapter():
 		postfields = urllib.urlencode(post_data)
 		c.setopt(c.POSTFIELDS, postfields)
 	
-	while True:
+	running = True
+	while running:
 		try:
 			c.perform()
-			break
+			running = False
 		except:
 			print("Failed to query "+str(url_suffix)+"... Retrying")
 	
@@ -535,7 +536,7 @@ class SnipeAPIAdapter():
 	#doing 1000 at a time
 	while offset < total:
 		print ("Asset ids retrieving query offset "+str(offset)+" of total asset count "+str(total))
-		response = self.queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=1000&&offset="+str(offset)+"search="+prefix)
+		response = self.queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=1000&offset="+str(offset)+"&search="+prefix)
 		j_response = json.loads(response)
 		total = j_response['total']
 		offset = offset + 1000

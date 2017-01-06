@@ -584,6 +584,89 @@ class SnipeAPIAdapter():
 			return row['assigned_to'].split("\">")[1].split("<")[0].replace("\\", "")
 	return False
 
+  def getAllUsersMap(self, prefix):
+	#get all of the current users in snipe (for vehicle users)
+	currentusers_byid = self.getUserIds(prefix=prefix)
+	currentusers = {}
+	for key in currentusers_byid:
+		tid = str(key)
+		tuser = str(currentusers_byid[key]).lower()
+		if tuser in currentusers:
+			print("WARN: the user "+tuser+" is already in the current users cache with id "+str(currentusers[tuser])+", it will be replaced with id "+str(tid))
+		currentusers.update({tuser:tid})
+	return currentusers
+
+  #example method call: 
+  #grabs all of the asset data, similarly to getAssetData with all users/ids, but a full array, memory intensive
+  def getAllAssetDataForEditing(self, prefix="", custom_field_def=[]):
+	data = {}#assetid:data
+	#need to loop for this data (1000 max at a time supported by snipe)
+	offset = 0
+	total = 1
+
+	#get the status ids in the system
+	status_ids = self.getStatusId()
+	
+	company_ids = {} #in format "agency":"id"
+	
+	#doing 1000 at a time
+	while offset < total:
+		print ("Asset ids retrieving query offset "+str(offset)+" of total asset count "+str(total))
+		response = self.queryAPI(api_suffix="/api/hardware/list?sort=asc&limit=1000&offset="+str(offset)+"&search="+prefix)
+		j_response = json.loads(response)
+		total = j_response['total']
+		offset = offset + 1000
+		for row in j_response['rows']:
+			#supplier is not supported by the api to allow bulk editing, this should only change once on create anyways (or modified manually in bulk)
+			#warranty is not supported by the api to allow bulk editing, this shoudl only change once on create anyways (or modified manually in bulk)
+			#requestable is not supported by the api, so this is also ommitted
+			
+			post_data = {'asset_tag':'', 'model_id':'', 'assigned_to':'', 'serial':'', 'name':'', 'company_id':'', \
+				'purchase_date':'', 'order_number':'', 'purchase_cost':'', 'notes':'', 'rtd_location_id':'', 'image':''}
+	
+			if len(custom_field_def) > 0:
+				for key in custom_field_def:
+					thekey = "_snipeit_"+key.lower()
+					post_data[thekey] = ''
+			if len(str(row['asset_tag']).strip()) > 0:
+
+				#status_id is only updated if it's not "deployed"
+				if str(row['status_label']).strip().lower() != "deployed":
+					if str(row['status_label']).strip() in status_ids:
+						post_data.update({'status_id':str(status_ids[str(row['status_label']).strip()]).strip()})
+				
+				post_data['asset_tag'] = str(row['asset_tag']).split("\">")[1].split("<")[0].replace("\\", "")
+				post_data['model_id'] = str(row['model']).split("/hardware/models/")[1].split("/view\"")[0]
+				post_data['assigned_to'] = str(row['assigned_to']).split("admin/users/")[1].split("/view\"")[0]
+				post_data['serial'] = str(row['serial']).strip()
+				post_data['name'] = str(row['name']).split("\">")[1].split("<")[0].replace("\\", "")
+				
+				if str(row['companyName']).strip() not in company_ids:
+					print("query companyid for "+str(row['companyName']).strip())
+					company_id = self.getCompanyId(str(row['companyName']).strip()) #returns a company id or creates one
+					company_ids.update({str(row['companyName']).strip():str(company_id)})
+				
+				post_data['company_id'] = company_ids[str(row['companyName']).strip()]
+				if str(row['purchase_date']).strip().lower() != "none":
+					post_data['purchase_date'] = str(row['purchase_date']).strip()
+				post_data['order_number'] = str(row['order_number']).strip()
+				if str(row['purchase_cost']).strip().lower() != "none":
+					post_data['purchase_cost'] = str(row['purchase_cost']).strip()
+				post_data['notes'] = str(row['notes']).strip()
+				post_data['rtd_location_id'] = str(row['location']).split("settings/locations/")[1].split("/view\"")[0]
+				
+				if len(str(row['image']).strip()) > 0:
+					post_data['image'] = str(row['image']).strip()
+				
+				#handle custom fields
+				if len(custom_field_def) > 0:
+					for key in custom_field_def:
+						thekey = "_snipeit_"+key.lower()
+						post_data[thekey] = str(row[thekey]).strip()
+				theid = str(row['id']).strip()
+				data.update({theid:post_data})
+	return data
+
   def getAssetData(self, id=None, custom_field_def=[]):
 	if not id:
 		return False
@@ -622,7 +705,7 @@ class SnipeAPIAdapter():
 		#use the data array to post back to the management system
 		self.queryAPI(api_suffix="/hardware/"+str(asset_id)+"/edit", post_data_api=data_array)
 		return True
-
+	
 	if purchase_cost is not None:
 		purchase_cost = ("%.2f" % float(purchase_cost))
 	asset_id = self.getAssetId(tag)

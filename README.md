@@ -13,6 +13,8 @@ Intended to be used on AWS Lambda, hence not using libraries like BeautifulSoup,
 	import pytz
 	import urllib
 
+	asset_set = {"category":"computer", "serial":"123456", "model":"inspiron", "manufacturer":"dell", "username":"sampleuser"}
+
 	snipe = SnipeAPIAdapter(endpoint, username, password)
 
 	asset_id = snipe.getAssetId(tag=asset_set['category']+"/"+asset_set['serial'])
@@ -31,7 +33,7 @@ Intended to be used on AWS Lambda, hence not using libraries like BeautifulSoup,
         	#specifics
         	company_id = snipe.getCompanyId(company)
         	model_id = snipe.getAssetModelId(asset_model_name=asset_set['model'], manufacturer=asset_set['manufacturer'], category=asset_set['category'], custom_fieldset_id=fieldset_id)
-        	user_id = snipe.getUserId(username=str(asset_set['vehicle_id']), group=depot)
+        	user_id = snipe.getUserId(username=str(asset_set['username']), group=depot)
         	asset_id = snipe.getAssetId(tag=asset_set['category']+"/"+asset_set['serial'], serial=asset_set['serial'], model_id=model_id, company_id=company_id, status_id=deployable_status_id)
         	snipe.checkout(asset_id=asset_id, user_id=user_id)
 	
